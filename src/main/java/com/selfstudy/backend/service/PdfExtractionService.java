@@ -1,6 +1,7 @@
 package com.selfstudy.backend.service;
 
 import com.selfstudy.backend.model.Document;
+import com.selfstudy.backend.model.Topic;
 import com.selfstudy.backend.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -79,7 +80,7 @@ public class PdfExtractionService {
             log.info("Completed text extraction for document: {}", document.getId());
             
             log.info("Starting topic extraction for document: {}", document.getId());
-            topicExtractionService.extractTopicsFromDocument(document.getId());
+            CompletableFuture<List<Topic>> topicsFuture = topicExtractionService.extractTopicsFromDocument(document.getId());
             
             return CompletableFuture.completedFuture(fullText.toString());
             
