@@ -1,5 +1,7 @@
 package com.selfstudy.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -24,6 +26,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Document extends BaseEntity {
 
     @NotBlank(message = "Title is required")
@@ -64,6 +67,7 @@ public class Document extends BaseEntity {
     private ProcessingStatus status;
 
     @OneToMany(mappedBy = "document", fetch = FetchType.LAZY)
+    @JsonManagedReference(value = "document-topics")
     private List<Topic> topics = new ArrayList<>();
 
     public enum ProcessingStatus {
