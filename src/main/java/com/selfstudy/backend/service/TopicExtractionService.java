@@ -27,7 +27,7 @@ public class TopicExtractionService {
 
     private static final Pattern CHAPTER_PATTERN = Pattern.compile("(?m)^\\s*(Chapter|CHAPTER)\\s+(\\d+|[IVX]+)\\s*[.:)]?\\s*(.+)$");
     private static final Pattern HEADING_PATTERN = Pattern.compile("(?m)^\\s*(\\d+|[IVX]+)\\s*[.:)]\\s*(.+)$");
-    private static final Pattern SUBHEADING_PATTERN = Pattern.compile("(?m)^\\s*(\\d+\\.\\d+|[a-z]\\.|[•\\*])\\s*(.+)$");
+    private static final Pattern SUBHEADING_PATTERN = Pattern.compile("(?m)^\\s*(\\d+\\.\\d+|\\d+\\.\\d+\\.\\d+|[a-z]\\.|[A-Z]\\.|[•\\*\\-])\\s*(.+)$");
     private static final Pattern TITLE_PATTERN = Pattern.compile("(?m)^\\s*([A-Z][A-Za-z\\s]+)\\s*$");
     private static final Pattern INTERFACE_PATTERN = Pattern.compile("(?m)^\\s*([A-Z][A-Za-z]+)\\s+interface\\s*$");
     private static final Pattern CLASS_PATTERN = Pattern.compile("(?m)^\\s*([A-Z][A-Za-z]+)\\s+class(es)?\\s*$");
@@ -147,7 +147,11 @@ public class TopicExtractionService {
                     Topic parent = findAppropriateParent(topicStack, newTopic);
                     if (parent != null) {
                         newTopic.setParent(parent);
-                        newTopic.setLevel(parent.getLevel() + 1);
+                        if (parent.getLevel() != null) {
+                            newTopic.setLevel(parent.getLevel() + 1);
+                        } else {
+                            newTopic.setLevel(1);
+                        }
                     }
                 } else {
                     newTopic.setLevel(1);
@@ -184,6 +188,7 @@ public class TopicExtractionService {
         topic.setStartPosition(position);
         topic.setType(type);
         topic.setDocument(document);
+        topic.setLevel(1); // Set default level to prevent NullPointerException
         return topic;
     }
     
@@ -210,6 +215,12 @@ public class TopicExtractionService {
     }
     
     private boolean isAppropriateParent(Topic potentialParent, Topic child) {
+        if (potentialParent.getLevel() != null && child.getLevel() != null) {
+            if (child.getLevel() == potentialParent.getLevel() + 1) {
+                return true;
+            }
+        }
+        
         if (potentialParent.getType() == Topic.TopicType.CHAPTER && 
             (child.getType() == Topic.TopicType.HEADING || 
              child.getType() == Topic.TopicType.SUBHEADING || 
