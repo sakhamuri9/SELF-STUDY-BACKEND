@@ -67,7 +67,7 @@ public class FileStorageService {
                 throw new ResourceNotFoundException("File not found: " + filename);
             }
         } catch (MalformedURLException ex) {
-            throw new ResourceNotFoundException("File not found: " + filename, ex);
+            throw new ResourceNotFoundException("File not found: " + filename);
         }
     }
 
