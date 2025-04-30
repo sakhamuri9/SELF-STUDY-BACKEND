@@ -25,9 +25,10 @@ public class TopicExtractionService {
     private final TopicRepository topicRepository;
     private final DocumentRepository documentRepository;
 
-    private static final Pattern CHAPTER_PATTERN = Pattern.compile("(?m)^\\s*(Chapter|CHAPTER)\\s+(\\d+|[IVX]+)\\s*[.:)]?\\s*(.+)$");
+    private static final Pattern CHAPTER_PATTERN = Pattern.compile("(?m)^\\s*(Chapter|CHAPTER|Section|SECTION)\\s+(\\d+|[IVX]+)\\s*[.:)]?\\s*(.+)$");
     private static final Pattern HEADING_PATTERN = Pattern.compile("(?m)^\\s*(\\d+|[IVX]+)\\s*[.:)]\\s*(.+)$");
-    private static final Pattern SUBHEADING_PATTERN = Pattern.compile("(?m)^\\s*(\\d+\\.\\d+|[a-z]\\.|[•\\*])\\s*(.+)$");
+    private static final Pattern SUBHEADING_PATTERN = Pattern.compile("(?m)^\\s*(\\d+\\.\\d+|\\d+\\.\\d+\\.\\d+|[a-z]\\.|[A-Z]\\.|[•\\*\\-]|\\*|\\+)\\s*(.+)$");
+    private static final Pattern METHOD_PATTERN = Pattern.compile("(?m)^\\s*([a-zA-Z_][a-zA-Z0-9_]*\\s*\\([^)]*\\))\\s*$");
     private static final Pattern TITLE_PATTERN = Pattern.compile("(?m)^\\s*([A-Z][A-Za-z\\s]+)\\s*$");
     private static final Pattern INTERFACE_PATTERN = Pattern.compile("(?m)^\\s*([A-Z][A-Za-z]+)\\s+interface\\s*$");
     private static final Pattern CLASS_PATTERN = Pattern.compile("(?m)^\\s*([A-Z][A-Za-z]+)\\s+class(es)?\\s*$");
@@ -128,6 +129,14 @@ public class TopicExtractionService {
             }
             
             if (newTopic == null) {
+                Matcher methodMatcher = METHOD_PATTERN.matcher(line);
+                if (methodMatcher.matches()) {
+                    String title = methodMatcher.group(1);
+                    newTopic = createTopic(title, i, Topic.TopicType.SUBHEADING, document);
+                }
+            }
+            
+            if (newTopic == null) {
                 Matcher titleMatcher = TITLE_PATTERN.matcher(line);
                 if (titleMatcher.matches() && line.length() > 10 && line.length() < 100) {
                     String title = titleMatcher.group(1);
@@ -143,14 +152,19 @@ public class TopicExtractionService {
                     allTopics.add(currentTopic);
                 }
                 
+                if (newTopic.getLevel() == null) {
+                    newTopic.setLevel(1);
+                }
+                
                 if (!topicStack.isEmpty()) {
                     Topic parent = findAppropriateParent(topicStack, newTopic);
                     if (parent != null) {
                         newTopic.setParent(parent);
+                        if (parent.getLevel() == null) {
+                            parent.setLevel(1);
+                        }
                         newTopic.setLevel(parent.getLevel() + 1);
                     }
-                } else {
-                    newTopic.setLevel(1);
                 }
                 
                 contentBuilder = new StringBuilder();
@@ -158,7 +172,7 @@ public class TopicExtractionService {
                 
                 topicStack.push(newTopic);
                 currentTopic = newTopic;
-            } else if (currentTopic != null) {
+            }else if (currentTopic != null) {
                 contentBuilder.append(line).append("\n");
             } else {
                 currentTopic = createTopic(document.getTitle(), 0, Topic.TopicType.CHAPTER, document);
@@ -184,6 +198,7 @@ public class TopicExtractionService {
         topic.setStartPosition(position);
         topic.setType(type);
         topic.setDocument(document);
+        topic.setLevel(1); // Set default level to prevent NullPointerException
         return topic;
     }
     
@@ -210,21 +225,42 @@ public class TopicExtractionService {
     }
     
     private boolean isAppropriateParent(Topic potentialParent, Topic child) {
+        if (potentialParent.getLevel() == null) {
+            potentialParent.setLevel(1);
+        }
+        
+        if (child.getLevel() == null) {
+            child.setLevel(potentialParent.getLevel() + 1);
+        }
+        
+        if (child.getLevel() == potentialParent.getLevel() + 1) {
+            return true;
+        }
+        
         if (potentialParent.getType() == Topic.TopicType.CHAPTER && 
             (child.getType() == Topic.TopicType.HEADING || 
              child.getType() == Topic.TopicType.SUBHEADING || 
              child.getType() == Topic.TopicType.PARAGRAPH)) {
+            child.setLevel(potentialParent.getLevel() + 1);
             return true;
         }
         
         if (potentialParent.getType() == Topic.TopicType.HEADING && 
             (child.getType() == Topic.TopicType.SUBHEADING || 
              child.getType() == Topic.TopicType.PARAGRAPH)) {
+            child.setLevel(potentialParent.getLevel() + 1);
             return true;
         }
         
         if (potentialParent.getType() == Topic.TopicType.SUBHEADING && 
             child.getType() == Topic.TopicType.PARAGRAPH) {
+            child.setLevel(potentialParent.getLevel() + 1);
+            return true;
+        }
+        
+        if (Math.abs(potentialParent.getStartPosition() - child.getStartPosition()) < 10 &&
+            potentialParent.getType().ordinal() < child.getType().ordinal()) {
+            child.setLevel(potentialParent.getLevel() + 1);
             return true;
         }
         
