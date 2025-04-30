@@ -57,13 +57,17 @@ public class TopicSummaryService {
         TopicSummary summary = topicSummaryRepository.findByTopicIdAndType(topic.getId(), type)
                 .orElse(new TopicSummary());
         
+        String defaultContent = "Generating summary for " + topic.getTitle() + "...";
+        summary.setContent(defaultContent);
+        
         summary.setTopic(topic);
         summary.setType(type);
         summary.setStatus(TopicSummary.GenerationStatus.PROCESSING);
-        topicSummaryRepository.save(summary);
+        
+        summary = topicSummaryRepository.save(summary);
         
         try {
-            String content = "";
+            String content = defaultContent;
             String examples = "";
             
             switch (type) {
