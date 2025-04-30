@@ -2,6 +2,7 @@ package com.selfstudy.backend.model;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import jakarta.persistence.Column;
@@ -30,6 +31,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "id")
 public class Topic extends BaseEntity {
 
@@ -57,15 +59,20 @@ public class Topic extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "document_id", nullable = false)
     @NotNull(message = "Document is required")
-    @JsonBackReference
+    @JsonBackReference(value = "document-topics")
     private Document document;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
-    @JsonBackReference("topic-parent")
+    @JsonBackReference(value = "topic-children")
     private Topic parent;
     
+    @OneToMany(mappedBy = "parent", fetch = FetchType.LAZY)
+    @JsonManagedReference(value = "topic-children")
+    private List<Topic> children = new ArrayList<>();
+    
     @OneToMany(mappedBy = "topic", fetch = FetchType.LAZY)
+    @JsonManagedReference(value = "topic-summaries")
     private List<TopicSummary> summaries = new ArrayList<>();
 
     @Column(name = "summary_generation_status")

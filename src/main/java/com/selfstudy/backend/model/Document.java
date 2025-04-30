@@ -1,6 +1,7 @@
 package com.selfstudy.backend.model;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import jakarta.persistence.Column;
@@ -27,6 +28,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "id")
 public class Document extends BaseEntity {
 
@@ -68,7 +70,7 @@ public class Document extends BaseEntity {
     private ProcessingStatus status;
 
     @OneToMany(mappedBy = "document", fetch = FetchType.LAZY)
-    @JsonManagedReference
+    @JsonManagedReference(value = "document-topics")
     private List<Topic> topics = new ArrayList<>();
 
     public enum ProcessingStatus {
