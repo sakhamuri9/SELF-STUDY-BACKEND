@@ -29,6 +29,7 @@ public class PdfExtractionService {
 
     private final DocumentRepository documentRepository;
     private final FileStorageService fileStorageService;
+    private final TopicExtractionService topicExtractionService;
     
     private static final int CHUNK_SIZE = 10; // Process 10 pages at a time
 
@@ -76,6 +77,10 @@ public class PdfExtractionService {
             documentRepository.save(document);
             
             log.info("Completed text extraction for document: {}", document.getId());
+            
+            log.info("Starting topic extraction for document: {}", document.getId());
+            topicExtractionService.extractTopicsFromDocument(document.getId());
+            
             return CompletableFuture.completedFuture(fullText.toString());
             
         } catch (Exception e) {
