@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -38,6 +39,16 @@ public class Document extends BaseEntity {
 
     @Column(nullable = false)
     private Long fileSize;
+
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String extractedText;
+
+    @Column(name = "page_count")
+    private Integer pageCount;
+
+    @Column(name = "extraction_progress")
+    private Integer extractionProgress;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
