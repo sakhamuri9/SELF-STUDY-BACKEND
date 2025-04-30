@@ -1,6 +1,7 @@
 package com.selfstudy.backend.service;
 
 import com.selfstudy.backend.model.Document;
+import com.selfstudy.backend.model.Topic;
 import com.selfstudy.backend.repository.DocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
