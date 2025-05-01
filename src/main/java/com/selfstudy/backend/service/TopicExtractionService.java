@@ -78,6 +78,8 @@ public class TopicExtractionService {
         Topic currentTopic = null;
         StringBuilder contentBuilder = new StringBuilder();
         
+        String fullDocumentContent = String.join("\n", lines);
+        
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
             
@@ -148,6 +150,9 @@ public class TopicExtractionService {
                 if (currentTopic != null) {
                     currentTopic.setContent(contentBuilder.toString().trim());
                     currentTopic.setEndPosition(i - 1);
+                    
+                    extractTopicContext(currentTopic, fullDocumentContent, document.getTitle());
+                    
                     topicRepository.save(currentTopic);
                     allTopics.add(currentTopic);
                 }
@@ -172,7 +177,7 @@ public class TopicExtractionService {
                 
                 topicStack.push(newTopic);
                 currentTopic = newTopic;
-            }else if (currentTopic != null) {
+            } else if (currentTopic != null) {
                 contentBuilder.append(line).append("\n");
             } else {
                 currentTopic = createTopic(document.getTitle(), 0, Topic.TopicType.CHAPTER, document);
@@ -185,11 +190,61 @@ public class TopicExtractionService {
         if (currentTopic != null) {
             currentTopic.setContent(contentBuilder.toString().trim());
             currentTopic.setEndPosition(lines.length - 1);
+            
+            extractTopicContext(currentTopic, fullDocumentContent, document.getTitle());
+            
             topicRepository.save(currentTopic);
             allTopics.add(currentTopic);
         }
         
         return allTopics;
+    }
+    
+    /**
+     * Extract a more comprehensive context for a topic by searching for its title in the full document
+     * and including surrounding paragraphs
+     */
+    private void extractTopicContext(Topic topic, String fullDocumentContent, String documentTitle) {
+        if (topic.getContent() != null && topic.getContent().length() > 200) {
+            return;
+        }
+        
+        String topicTitle = topic.getTitle();
+        String currentContent = topic.getContent();
+        
+        if (topicTitle.equals(documentTitle)) {
+            if (fullDocumentContent.length() > 1000) {
+                topic.setContent(fullDocumentContent.substring(0, 1000));
+            } else {
+                topic.setContent(fullDocumentContent);
+            }
+            return;
+        }
+        
+        int titleIndex = fullDocumentContent.indexOf(topicTitle);
+        if (titleIndex >= 0) {
+            int contentStart = titleIndex + topicTitle.length();
+            
+            int contentEnd = fullDocumentContent.length();
+            
+            Matcher nextHeadingMatcher = HEADING_PATTERN.matcher(fullDocumentContent.substring(contentStart));
+            if (nextHeadingMatcher.find()) {
+                contentEnd = contentStart + nextHeadingMatcher.start();
+            }
+            
+            if (contentEnd - contentStart > 2000) {
+                contentEnd = contentStart + 2000;
+            }
+            
+            if (contentStart < contentEnd) {
+                String extractedContent = topicTitle + "\n" + 
+                    fullDocumentContent.substring(contentStart, contentEnd).trim();
+                
+                if (extractedContent.length() > currentContent.length()) {
+                    topic.setContent(extractedContent);
+                }
+            }
+        }
     }
     
     private Topic createTopic(String title, int position, Topic.TopicType type, Document document) {
