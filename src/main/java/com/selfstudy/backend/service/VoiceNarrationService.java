@@ -17,6 +17,7 @@ import com.selfstudy.backend.model.TopicSummary;
 import com.selfstudy.backend.repository.AudioFileRepository;
 import com.selfstudy.backend.repository.TopicRepository;
 import com.selfstudy.backend.repository.TopicSummaryRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,8 +61,9 @@ public class VoiceNarrationService {
     private String defaultVoice;
     
     /**
-     * Initialize storage directory
+     * Initialize storage directory on bean creation
      */
+    @PostConstruct
     public void init() {
         try {
             Files.createDirectories(Paths.get(audioStorageDir));
