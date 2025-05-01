@@ -1,9 +1,13 @@
 package com.selfstudy.backend.service;
 
+import com.selfstudy.backend.config.OpenAIConfig;
 import com.selfstudy.backend.model.Topic;
 import com.selfstudy.backend.model.TopicSummary;
 import com.selfstudy.backend.repository.TopicRepository;
 import com.selfstudy.backend.repository.TopicSummaryRepository;
+import com.theokanning.openai.completion.chat.ChatCompletionRequest;
+import com.theokanning.openai.completion.chat.ChatMessage;
+import com.theokanning.openai.service.OpenAiService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -13,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +26,8 @@ public class TopicSummaryService {
 
     private final TopicRepository topicRepository;
     private final TopicSummaryRepository topicSummaryRepository;
+    private final OpenAiService openAiService;
+    private final OpenAIConfig.OpenAIRequestConfig openAIRequestConfig;
 
     @Async
     public CompletableFuture<List<TopicSummary>> generateSummariesForTopic(Long topicId) {
@@ -103,12 +110,41 @@ public class TopicSummaryService {
             return "No content available for this topic.";
         }
         
-        String[] sentences = content.split("[.!?]\\s+");
-        if (sentences.length <= 2) {
-            return content;
+        try {
+            log.info("Generating basic summary for topic: {}", topic.getId());
+            
+            List<ChatMessage> messages = new ArrayList<>();
+            messages.add(new ChatMessage("system", 
+                "You are an educational content summarizer. Create a concise, basic summary of the following topic. " +
+                "Focus on the key points and main ideas. Keep it clear and straightforward, suitable for a quick overview. " +
+                "The summary should be 2-3 sentences long."));
+            
+            messages.add(new ChatMessage("user", 
+                "Topic title: " + topic.getTitle() + "\n\n" +
+                "Topic content: " + content));
+            
+            ChatCompletionRequest request = ChatCompletionRequest.builder()
+                .model(openAIRequestConfig.getModel())
+                .messages(messages)
+                .temperature(0.7)
+                .maxTokens(150)
+                .build();
+            
+            String summary = openAiService.createChatCompletion(request)
+                .getChoices().get(0).getMessage().getContent();
+            
+            log.info("Successfully generated basic summary for topic: {}", topic.getId());
+            return summary;
+            
+        } catch (Exception e) {
+            log.error("Error generating basic summary with OpenAI: {}", e.getMessage(), e);
+            
+            String[] sentences = content.split("[.!?]\\s+");
+            if (sentences.length <= 2) {
+                return content;
+            }
+            return sentences[0] + ". " + sentences[1] + ".";
         }
-        
-        return sentences[0] + ". " + sentences[1] + ".";
     }
     
     private String generateDetailedSummary(Topic topic) {
@@ -117,7 +153,38 @@ public class TopicSummaryService {
             return "No detailed content available for this topic.";
         }
         
-        return "This topic covers " + topic.getTitle() + ". " + content;
+        try {
+            log.info("Generating detailed summary for topic: {}", topic.getId());
+            
+            List<ChatMessage> messages = new ArrayList<>();
+            messages.add(new ChatMessage("system", 
+                "You are an educational content expert. Create a comprehensive, detailed summary of the following topic. " +
+                "Include important concepts, relationships, and implications. The summary should be thorough and educational, " +
+                "suitable for someone who wants to understand the topic in depth. Include technical details where appropriate. " +
+                "The summary should be 4-6 sentences long."));
+            
+            messages.add(new ChatMessage("user", 
+                "Topic title: " + topic.getTitle() + "\n\n" +
+                "Topic content: " + content));
+            
+            ChatCompletionRequest request = ChatCompletionRequest.builder()
+                .model(openAIRequestConfig.getModel())
+                .messages(messages)
+                .temperature(0.7)
+                .maxTokens(300)
+                .build();
+            
+            String summary = openAiService.createChatCompletion(request)
+                .getChoices().get(0).getMessage().getContent();
+            
+            log.info("Successfully generated detailed summary for topic: {}", topic.getId());
+            return summary;
+            
+        } catch (Exception e) {
+            log.error("Error generating detailed summary with OpenAI: {}", e.getMessage(), e);
+            
+            return "This topic covers " + topic.getTitle() + ". " + content;
+        }
     }
     
     private String generateChildFriendlySummary(Topic topic) {
@@ -126,26 +193,145 @@ public class TopicSummaryService {
             return "Nothing to read here yet!";
         }
         
-        String[] sentences = content.split("[.!?]\\s+");
-        if (sentences.length == 0) {
-            return "This is about " + topic.getTitle() + "!";
+        try {
+            log.info("Generating child-friendly summary for topic: {}", topic.getId());
+            
+            List<ChatMessage> messages = new ArrayList<>();
+            messages.add(new ChatMessage("system", 
+                "You are an educational content creator for children. Create a fun, engaging, and simple summary of the following topic. " +
+                "Use simple language, analogies, and a friendly tone. Avoid complex terminology. Make it exciting and easy to understand " +
+                "for a child aged 8-12. The summary should be 3-4 sentences long."));
+            
+            messages.add(new ChatMessage("user", 
+                "Topic title: " + topic.getTitle() + "\n\n" +
+                "Topic content: " + content));
+            
+            ChatCompletionRequest request = ChatCompletionRequest.builder()
+                .model(openAIRequestConfig.getModel())
+                .messages(messages)
+                .temperature(0.8)
+                .maxTokens(200)
+                .build();
+            
+            String summary = openAiService.createChatCompletion(request)
+                .getChoices().get(0).getMessage().getContent();
+            
+            log.info("Successfully generated child-friendly summary for topic: {}", topic.getId());
+            return summary;
+            
+        } catch (Exception e) {
+            log.error("Error generating child-friendly summary with OpenAI: {}", e.getMessage(), e);
+            
+            String[] sentences = content.split("[.!?]\\s+");
+            if (sentences.length == 0) {
+                return "This is about " + topic.getTitle() + "!";
+            }
+            String firstSentence = sentences[0].replaceAll("\\b\\w{10,}\\b", "thing");
+            return "Let's learn about " + topic.getTitle() + "! " + firstSentence + ".";
         }
-        
-        String firstSentence = sentences[0].replaceAll("\\b\\w{10,}\\b", "thing");
-        return "Let's learn about " + topic.getTitle() + "! " + firstSentence + ".";
     }
     
     private String generateBasicExamples(Topic topic) {
-        return "Example: Consider how " + topic.getTitle() + " is used in practice.";
+        try {
+            log.info("Generating basic examples for topic: {}", topic.getId());
+            
+            List<ChatMessage> messages = new ArrayList<>();
+            messages.add(new ChatMessage("system", 
+                "You are an educational content creator. Create 1-2 practical, real-world examples that illustrate the concept. " +
+                "The examples should be clear, concise, and help reinforce understanding of the topic. " +
+                "Keep the examples straightforward and focused on practical application."));
+            
+            messages.add(new ChatMessage("user", 
+                "Topic title: " + topic.getTitle() + "\n\n" +
+                "Topic content: " + topic.getContent()));
+            
+            ChatCompletionRequest request = ChatCompletionRequest.builder()
+                .model(openAIRequestConfig.getModel())
+                .messages(messages)
+                .temperature(0.7)
+                .maxTokens(150)
+                .build();
+            
+            String examples = openAiService.createChatCompletion(request)
+                .getChoices().get(0).getMessage().getContent();
+            
+            log.info("Successfully generated basic examples for topic: {}", topic.getId());
+            return examples;
+            
+        } catch (Exception e) {
+            log.error("Error generating basic examples with OpenAI: {}", e.getMessage(), e);
+            
+            return "Example: Consider how " + topic.getTitle() + " is used in practice.";
+        }
     }
     
     private String generateDetailedExamples(Topic topic) {
-        return "Example 1: " + topic.getTitle() + " can be applied in various scenarios.\n\n" +
-               "Example 2: Here's how professionals use " + topic.getTitle() + " in their work.";
+        try {
+            log.info("Generating detailed examples for topic: {}", topic.getId());
+            
+            List<ChatMessage> messages = new ArrayList<>();
+            messages.add(new ChatMessage("system", 
+                "You are an educational content expert. Create 2-3 detailed, technical examples that demonstrate the concept in depth. " +
+                "The examples should showcase different aspects or applications of the topic. Include technical details, " +
+                "potential challenges, and best practices where appropriate. Format as 'Example 1:', 'Example 2:', etc."));
+            
+            messages.add(new ChatMessage("user", 
+                "Topic title: " + topic.getTitle() + "\n\n" +
+                "Topic content: " + topic.getContent()));
+            
+            ChatCompletionRequest request = ChatCompletionRequest.builder()
+                .model(openAIRequestConfig.getModel())
+                .messages(messages)
+                .temperature(0.7)
+                .maxTokens(300)
+                .build();
+            
+            String examples = openAiService.createChatCompletion(request)
+                .getChoices().get(0).getMessage().getContent();
+            
+            log.info("Successfully generated detailed examples for topic: {}", topic.getId());
+            return examples;
+            
+        } catch (Exception e) {
+            log.error("Error generating detailed examples with OpenAI: {}", e.getMessage(), e);
+            
+            return "Example 1: " + topic.getTitle() + " can be applied in various scenarios.\n\n" +
+                   "Example 2: Here's how professionals use " + topic.getTitle() + " in their work.";
+        }
     }
     
     private String generateChildFriendlyExamples(Topic topic) {
-        return "Fun example: Imagine you're playing with " + topic.getTitle() + "!";
+        try {
+            log.info("Generating child-friendly examples for topic: {}", topic.getId());
+            
+            List<ChatMessage> messages = new ArrayList<>();
+            messages.add(new ChatMessage("system", 
+                "You are creating educational content for children. Create 1-2 fun, engaging examples that illustrate the concept " +
+                "in a way that children aged 8-12 can understand and relate to. Use simple language, familiar scenarios, " +
+                "and possibly elements of play or imagination. Make it exciting and memorable!"));
+            
+            messages.add(new ChatMessage("user", 
+                "Topic title: " + topic.getTitle() + "\n\n" +
+                "Topic content: " + topic.getContent()));
+            
+            ChatCompletionRequest request = ChatCompletionRequest.builder()
+                .model(openAIRequestConfig.getModel())
+                .messages(messages)
+                .temperature(0.8)
+                .maxTokens(200)
+                .build();
+            
+            String examples = openAiService.createChatCompletion(request)
+                .getChoices().get(0).getMessage().getContent();
+            
+            log.info("Successfully generated child-friendly examples for topic: {}", topic.getId());
+            return examples;
+            
+        } catch (Exception e) {
+            log.error("Error generating child-friendly examples with OpenAI: {}", e.getMessage(), e);
+            
+            return "Fun example: Imagine you're playing with " + topic.getTitle() + "!";
+        }
     }
     
     public List<TopicSummary> getSummariesForTopic(Long topicId) {
