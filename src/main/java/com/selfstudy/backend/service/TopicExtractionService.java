@@ -177,7 +177,7 @@ public class TopicExtractionService {
                 
                 topicStack.push(newTopic);
                 currentTopic = newTopic;
-            } else if (currentTopic != null) {
+            }else if (currentTopic != null) {
                 contentBuilder.append(line).append("\n");
             } else {
                 currentTopic = createTopic(document.getTitle(), 0, Topic.TopicType.CHAPTER, document);
@@ -198,71 +198,6 @@ public class TopicExtractionService {
         }
         
         return allTopics;
-    }
-    
-    /**
-     * Extract a more comprehensive context for a topic by searching for its title in the full document
-     * and including surrounding paragraphs
-     */
-    private void extractTopicContext(Topic topic, String fullDocumentContent, String documentTitle) {
-        // Always try to extract more comprehensive context, regardless of current content length
-        String topicTitle = topic.getTitle();
-        String currentContent = topic.getContent();
-        
-        if (topicTitle.equals(documentTitle)) {
-            // For the main document topic, include a reasonable amount of the beginning
-            int contentLength = Math.min(fullDocumentContent.length(), 5000);
-            topic.setContent(fullDocumentContent.substring(0, contentLength));
-            return;
-        }
-        
-        // Try to find the topic title in the document
-        int titleIndex = fullDocumentContent.indexOf(topicTitle);
-        if (titleIndex < 0) {
-            // If exact title not found, try a more flexible search
-            String flexibleTitle = topicTitle.replaceAll("\\s+", "\\\\s+");
-            Pattern flexPattern = Pattern.compile(flexibleTitle, Pattern.CASE_INSENSITIVE);
-            Matcher flexMatcher = flexPattern.matcher(fullDocumentContent);
-            if (flexMatcher.find()) {
-                titleIndex = flexMatcher.start();
-            }
-        }
-        
-        if (titleIndex >= 0) {
-            int contentStart = titleIndex;
-            
-            // Find the end of this section by looking for the next heading or section
-            int contentEnd = fullDocumentContent.length();
-            
-            // Look for the next heading pattern after this topic
-            Matcher nextHeadingMatcher = HEADING_PATTERN.matcher(fullDocumentContent.substring(titleIndex + topicTitle.length()));
-            if (nextHeadingMatcher.find()) {
-                contentEnd = titleIndex + topicTitle.length() + nextHeadingMatcher.start();
-            } else {
-                // Also try to find chapter/section markers
-                Pattern sectionPattern = Pattern.compile("(?m)^\\s*(Chapter|CHAPTER|Section|SECTION)\\s+\\d+");
-                Matcher sectionMatcher = sectionPattern.matcher(fullDocumentContent.substring(titleIndex + topicTitle.length()));
-                if (sectionMatcher.find()) {
-                    contentEnd = titleIndex + topicTitle.length() + sectionMatcher.start();
-                }
-            }
-            
-            // Set a reasonable maximum content length (5000 chars instead of 2000)
-            int maxContentLength = 5000;
-            if (contentEnd - contentStart > maxContentLength) {
-                contentEnd = contentStart + maxContentLength;
-            }
-            
-            if (contentStart < contentEnd) {
-                // Extract the content including the title and surrounding context
-                String extractedContent = fullDocumentContent.substring(contentStart, contentEnd).trim();
-                
-                // Only update if we found more content or if current content is very short
-                if (extractedContent.length() > currentContent.length() || currentContent.length() < 100) {
-                    topic.setContent(extractedContent);
-                }
-            }
-        }
     }
     
     private Topic createTopic(String title, int position, Topic.TopicType type, Document document) {
@@ -338,5 +273,66 @@ public class TopicExtractionService {
         }
         
         return false;
+    }
+    
+    /**
+     * Extracts more comprehensive context for a topic by searching for its title in the document content
+     * and extracting a larger portion of text around it.
+     * 
+     * @param topic The topic to extract context for
+     * @param fullDocumentContent The full document content
+     * @param documentTitle The document title
+     */
+    private void extractTopicContext(Topic topic, String fullDocumentContent, String documentTitle) {
+        if (topic.getContent() == null || topic.getContent().trim().isEmpty() || 
+            topic.getContent().length() < 100) {
+            
+            log.debug("Extracting more context for topic: {}", topic.getTitle());
+            
+            String topicTitle = topic.getTitle();
+            String escapedTitle = Pattern.quote(topicTitle);
+            
+            List<Pattern> patterns = new ArrayList<>();
+            patterns.add(Pattern.compile("(?i)\\b" + escapedTitle + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+            patterns.add(Pattern.compile("(?i)\\b" + escapedTitle.replaceAll("\\s+", "\\\\s+") + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+            patterns.add(Pattern.compile("(?i)" + escapedTitle + ".*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+            
+            String foundContent = null;
+            for (Pattern pattern : patterns) {
+                Matcher matcher = pattern.matcher(fullDocumentContent);
+                if (matcher.find()) {
+                    foundContent = matcher.group(0);
+                    break;
+                }
+            }
+            
+            if (foundContent != null && !foundContent.trim().isEmpty()) {
+                int maxLength = 5000; // Increased from 2000 to capture more comprehensive content
+                if (foundContent.length() > maxLength) {
+                    foundContent = foundContent.substring(0, maxLength) + "...";
+                }
+                
+                log.debug("Found more context for topic: {} (length: {})", topic.getTitle(), foundContent.length());
+                topic.setContent(foundContent.trim());
+            } else {
+                String sectionPattern = "\\b\\d+(\\.\\d+)*\\s+" + escapedTitle + "\\b";
+                Pattern pattern = Pattern.compile(sectionPattern, Pattern.CASE_INSENSITIVE);
+                Matcher matcher = pattern.matcher(fullDocumentContent);
+                
+                if (matcher.find()) {
+                    int startPos = matcher.start();
+                    int endPos = fullDocumentContent.indexOf("\n\n", startPos + matcher.group(0).length());
+                    if (endPos == -1) {
+                        endPos = fullDocumentContent.length();
+                    }
+                    
+                    String sectionContent = fullDocumentContent.substring(startPos, endPos);
+                    if (sectionContent.length() > 100) {
+                        log.debug("Found section content for topic: {} (length: {})", topic.getTitle(), sectionContent.length());
+                        topic.setContent(sectionContent.trim());
+                    }
+                }
+            }
+        }
     }
 }
