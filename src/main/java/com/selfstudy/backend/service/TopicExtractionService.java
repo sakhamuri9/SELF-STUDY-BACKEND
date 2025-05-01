@@ -78,7 +78,7 @@ public class TopicExtractionService {
         Topic currentTopic = null;
         StringBuilder contentBuilder = new StringBuilder();
         
-        String fullDocumentContent = String.join("\n", lines);
+        String fullDocumentContent = document.getExtractedText();
         
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
@@ -287,29 +287,119 @@ public class TopicExtractionService {
         if (topic.getContent() == null || topic.getContent().trim().isEmpty() || 
             topic.getContent().length() < 100) {
             
-            log.debug("Extracting more context for topic: {}", topic.getTitle());
+
+            log.info("Extracting more context for topic: {}", topic.getTitle());
             
             String topicTitle = topic.getTitle();
             
-            String cleanTitle = topicTitle.replaceAll("\\s+\\d+$", "");
-            log.debug("Cleaned title for searching: '{}' from original '{}'", cleanTitle, topicTitle);
+            String titleNumber = "";
+            Pattern numberPattern = Pattern.compile("\\s+(\\d+)\\s*$");
+            Matcher numberMatcher = numberPattern.matcher(topicTitle);
+            if (numberMatcher.find()) {
+                titleNumber = numberMatcher.group(1);
+                log.info("Found number in title: {} for topic: {}", titleNumber, topicTitle);
+            }
+            
+            String cleanTitle = topicTitle.replaceAll("\\s+\\d+$", "").trim();
+            log.info("Cleaned title for searching: '{}' from original '{}'", cleanTitle, topicTitle);
             
             String escapedTitle = Pattern.quote(cleanTitle);
             
-            List<Pattern> patterns = new ArrayList<>();
-            patterns.add(Pattern.compile("(?i)\\b" + escapedTitle + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
-            patterns.add(Pattern.compile("(?i)\\b" + escapedTitle.replaceAll("\\s+", "\\\\s+") + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
-            patterns.add(Pattern.compile("(?i)" + escapedTitle + ".*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
-            patterns.add(Pattern.compile("(?i)Section\\s+\\d+\\.\\s+" + escapedTitle + ".*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
-            patterns.add(Pattern.compile("(?i)\\b\\d+\\.\\s+" + escapedTitle + ".*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+            if (!titleNumber.isEmpty()) {
+                String sectionPattern = "(?i)\\bSection\\s+" + titleNumber + "\\.\\s+" + escapedTitle + "\\b.*?(?=\\n\\s*\\n|\\n\\s*Section\\s+\\d+|\\n\\s*Chapter|\\n\\s*CHAPTER|$)";
+                log.info("Trying section pattern: {}", sectionPattern);
+                Pattern pattern = Pattern.compile(sectionPattern, Pattern.DOTALL);
+                Matcher matcher = pattern.matcher(fullDocumentContent);
+                
+                if (matcher.find()) {
+                    String sectionContent = matcher.group(0);
+                    log.info("Found content using section pattern for topic: {} (length: {})", 
+                            topicTitle, sectionContent.length());
+                    
+                    int maxLength = 5000;
+                    if (sectionContent.length() > maxLength) {
+                        sectionContent = sectionContent.substring(0, maxLength) + "...";
+                    }
+                    
+                    topic.setContent(sectionContent.trim());
+                    return;
+                } else {
+                    log.info("No match found with section pattern for topic: {}", topicTitle);
+                }
+                
+                String sectionNumberPattern = "(?i)\\bSection\\s+" + titleNumber + "\\b.*?(?=\\n\\s*\\n|\\n\\s*Section\\s+\\d+|\\n\\s*Chapter|\\n\\s*CHAPTER|$)";
+                log.info("Trying section number pattern: {}", sectionNumberPattern);
+                Pattern sectionNumberPatternObj = Pattern.compile(sectionNumberPattern, Pattern.DOTALL);
+                Matcher sectionNumberMatcher = sectionNumberPatternObj.matcher(fullDocumentContent);
+                
+                if (sectionNumberMatcher.find()) {
+                    String sectionContent = sectionNumberMatcher.group(0);
+                    log.info("Found content using section number pattern for topic: {} (length: {})", 
+                            topicTitle, sectionContent.length());
+                    
+                    int maxLength = 5000;
+                    if (sectionContent.length() > maxLength) {
+                        sectionContent = sectionContent.substring(0, maxLength) + "...";
+                    }
+                    
+                    topic.setContent(sectionContent.trim());
+                    return;
+                } else {
+                    log.info("No match found with section number pattern for topic: {}", topicTitle);
+                }
+            }
+            
+            String fullTitlePattern = "(?i)\\b" + Pattern.quote(topicTitle) + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)";
+            log.info("Trying pattern with full title: {}", fullTitlePattern);
+            Pattern fullPattern = Pattern.compile(fullTitlePattern, Pattern.DOTALL);
+            Matcher fullMatcher = fullPattern.matcher(fullDocumentContent);
             
             String foundContent = null;
-            for (Pattern pattern : patterns) {
-                Matcher matcher = pattern.matcher(fullDocumentContent);
-                if (matcher.find()) {
-                    foundContent = matcher.group(0);
-                    log.debug("Found content using pattern: {}", pattern.pattern());
-                    break;
+            if (fullMatcher.find()) {
+                foundContent = fullMatcher.group(0);
+                log.info("Found content using full title pattern for topic: {} (length: {})", 
+                        topicTitle, foundContent.length());
+                
+                if (foundContent.length() < 100 && !titleNumber.isEmpty()) {
+                    log.info("Content too short ({}), trying to find more comprehensive content", foundContent.length());
+                    foundContent = null;
+                }
+            } else {
+                log.info("No match found with full title pattern for topic: {}", topicTitle);
+            }
+            
+            if (foundContent == null || foundContent.length() < 100) {
+                List<Pattern> patterns = new ArrayList<>();
+                
+                patterns.add(Pattern.compile("(?i)\\b" + escapedTitle + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+                patterns.add(Pattern.compile("(?i)\\b" + escapedTitle.replaceAll("\\s+", "\\\\s+") + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+                
+                if (!titleNumber.isEmpty()) {
+                    patterns.add(Pattern.compile("(?i)\\b" + escapedTitle + "\\s+" + titleNumber + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+                    patterns.add(Pattern.compile("(?i)\\b" + titleNumber + "\\.\\s+" + escapedTitle + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+                    patterns.add(Pattern.compile("(?i)\\bSection\\s+" + titleNumber + "\\b.*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+                }
+                
+                patterns.add(Pattern.compile("(?i)" + escapedTitle + ".*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+                patterns.add(Pattern.compile("(?i)Section\\s+\\d+\\.\\s+" + escapedTitle + ".*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+                patterns.add(Pattern.compile("(?i)\\b\\d+\\.\\s+" + escapedTitle + ".*?(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)", Pattern.DOTALL));
+                
+                for (Pattern pattern : patterns) {
+                    log.info("Trying pattern: {}", pattern.pattern());
+                    Matcher matcher = pattern.matcher(fullDocumentContent);
+                    if (matcher.find()) {
+                        String content = matcher.group(0);
+                        log.info("Found content using pattern: {} for topic: {} (length: {})", 
+                                pattern.pattern(), topicTitle, content.length());
+                        
+                        if (foundContent == null || content.length() > foundContent.length()) {
+                            foundContent = content;
+                            log.info("Using longer content: {} characters", foundContent.length());
+                        }
+                    } else {
+                        log.info("No match found with pattern: {} for topic: {}", pattern.pattern(), topicTitle);
+                    }
+
                 }
             }
             
@@ -319,43 +409,93 @@ public class TopicExtractionService {
                     foundContent = foundContent.substring(0, maxLength) + "...";
                 }
                 
-                log.debug("Found more context for topic: {} (length: {})", topic.getTitle(), foundContent.length());
+                log.info("Setting content for topic: {} (length: {})", topic.getTitle(), foundContent.length());
                 topic.setContent(foundContent.trim());
             } else {
-                String sectionPattern = "\\b\\d+(\\.\\d+)*\\s+" + escapedTitle + "\\b";
-                Pattern pattern = Pattern.compile(sectionPattern, Pattern.CASE_INSENSITIVE);
-                Matcher matcher = pattern.matcher(fullDocumentContent);
+                log.info("No content found for topic: {} using regex patterns, trying fallback methods", topicTitle);
                 
-                if (matcher.find()) {
-                    int startPos = matcher.start();
-                    int endPos = fullDocumentContent.indexOf("\n\n", startPos + matcher.group(0).length());
-                    if (endPos == -1) {
-                        endPos = fullDocumentContent.length();
-                    }
+                if (!titleNumber.isEmpty()) {
+                    String sectionPattern = "\\b" + titleNumber + "(\\.\\d+)*\\s+" + escapedTitle + "\\b";
+                    log.info("Trying section pattern: {}", sectionPattern);
+                    Pattern pattern = Pattern.compile(sectionPattern, Pattern.CASE_INSENSITIVE);
+                    Matcher matcher = pattern.matcher(fullDocumentContent);
                     
-                    String sectionContent = fullDocumentContent.substring(startPos, endPos);
-                    if (sectionContent.length() > 100) {
-                        log.debug("Found section content for topic: {} (length: {})", topic.getTitle(), sectionContent.length());
-                        topic.setContent(sectionContent.trim());
-                    }
-                } else {
-                    Pattern sectionNumberPattern = Pattern.compile("\\b(\\d+)\\s*\\.\\s+" + escapedTitle + "\\b");
-                    Matcher sectionNumberMatcher = sectionNumberPattern.matcher(topicTitle);
-                    
-                    if (sectionNumberMatcher.find()) {
-                        String sectionNumber = sectionNumberMatcher.group(1);
-                        Pattern fullSectionPattern = Pattern.compile("(?i)Section\\s+" + sectionNumber + "\\.[^\\n]*\\n.*?(?=\\n\\s*Section\\s+\\d+\\.|$)", Pattern.DOTALL);
-                        Matcher fullSectionMatcher = fullSectionPattern.matcher(fullDocumentContent);
+                    if (matcher.find()) {
+                        int startPos = matcher.start();
+                        int endPos = fullDocumentContent.indexOf("\n\n", startPos + matcher.group(0).length());
+                        if (endPos == -1) {
+                            endPos = fullDocumentContent.length();
+                        }
                         
-                        if (fullSectionMatcher.find()) {
-                            String fullSectionContent = fullSectionMatcher.group(0);
-                            if (fullSectionContent.length() > 100) {
-                                log.debug("Found full section content for topic: {} (length: {})", topic.getTitle(), fullSectionContent.length());
-                                topic.setContent(fullSectionContent.trim());
+                        String sectionContent = fullDocumentContent.substring(startPos, endPos);
+                        if (sectionContent.length() > 100) {
+                            log.info("Found section content for topic: {} (length: {})", topic.getTitle(), sectionContent.length());
+                            topic.setContent(sectionContent.trim());
+                        } else {
+                            log.info("Found section content too short for topic: {} (length: {})", topic.getTitle(), sectionContent.length());
+                        }
+                    } else {
+                        log.info("No match found with section pattern for topic: {}", topicTitle);
+                    }
+                }
+                
+                if (topic.getContent() == null || topic.getContent().trim().isEmpty() || topic.getContent().length() < 100) {
+                    String[] titleWords = cleanTitle.split("\\s+");
+                    if (titleWords.length > 0) {
+                        StringBuilder wordPatternBuilder = new StringBuilder("(?i)");
+                        for (String word : titleWords) {
+                            if (word.length() > 3) { // Only use significant words
+                                wordPatternBuilder.append("\\b").append(Pattern.quote(word)).append("\\b.*?");
                             }
+                        }
+                        wordPatternBuilder.append("(?=\\n\\s*\\n|\\n\\s*\\d+\\.\\s|\\n\\s*Chapter|\\n\\s*CHAPTER|$)");
+                        
+                        String wordPattern = wordPatternBuilder.toString();
+                        log.info("Trying word pattern: {}", wordPattern);
+                        Pattern pattern = Pattern.compile(wordPattern, Pattern.DOTALL);
+                        Matcher matcher = pattern.matcher(fullDocumentContent);
+                        
+                        if (matcher.find()) {
+                            String wordContent = matcher.group(0);
+                            if (wordContent.length() > 100) {
+                                log.info("Found content using word pattern for topic: {} (length: {})", 
+                                        topic.getTitle(), wordContent.length());
+                                topic.setContent(wordContent.trim());
+                            } else {
+                                log.info("Found content too short using word pattern for topic: {} (length: {})", 
+                                        topic.getTitle(), wordContent.length());
+                            }
+                        } else {
+                            log.info("No match found with word pattern for topic: {}", topicTitle);
                         }
                     }
                 }
+                
+                if (topic.getContent() == null || topic.getContent().trim().isEmpty() || topic.getContent().length() < 100) {
+                    log.info("No content found using patterns for topic: {}, extracting from document position", topicTitle);
+                    
+                    String[] lines = fullDocumentContent.split("\n");
+                    int startLine = Math.max(0, topic.getStartPosition() - 5);
+                    int endLine = Math.min(lines.length - 1, topic.getEndPosition() + 20);
+                    
+                    StringBuilder positionContent = new StringBuilder();
+                    for (int i = startLine; i <= endLine; i++) {
+                        if (i < lines.length) {
+                            positionContent.append(lines[i]).append("\n");
+                        }
+                    }
+                    
+                    String extractedContent = positionContent.toString().trim();
+                    if (extractedContent.length() > 100) {
+                        log.info("Extracted content from position for topic: {} (length: {})", 
+                                topic.getTitle(), extractedContent.length());
+                        topic.setContent(extractedContent);
+                    } else {
+                        log.info("Extracted content too short from position for topic: {} (length: {})", 
+                                topic.getTitle(), extractedContent.length());
+                    }
+                }
+
             }
         }
     }
