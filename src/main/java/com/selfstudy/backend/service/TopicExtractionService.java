@@ -287,6 +287,7 @@ public class TopicExtractionService {
         if (topic.getContent() == null || topic.getContent().trim().isEmpty() || 
             topic.getContent().length() < 100) {
             
+
             log.info("Extracting more context for topic: {}", topic.getTitle());
             
             String topicTitle = topic.getTitle();
@@ -398,6 +399,7 @@ public class TopicExtractionService {
                     } else {
                         log.info("No match found with pattern: {} for topic: {}", pattern.pattern(), topicTitle);
                     }
+
                 }
             }
             
@@ -493,6 +495,7 @@ public class TopicExtractionService {
                                 topic.getTitle(), extractedContent.length());
                     }
                 }
+
             }
         }
     }

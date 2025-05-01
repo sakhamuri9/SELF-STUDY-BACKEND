@@ -22,6 +22,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -117,23 +119,48 @@ public class PdfExtractionService {
     }
     
     private List<String> splitTextIntoPages(String text) {
-        String[] paragraphs = text.split("\n\n");
+        Pattern pagePattern = Pattern.compile("(?i)\\bpage\\s+\\d+\\b|\\f");
+        Matcher pageMatcher = pagePattern.matcher(text);
+        
         List<String> pages = new ArrayList<>();
+        int lastPos = 0;
         
-        StringBuilder currentPage = new StringBuilder();
-        int paragraphsPerPage = 5; // Approximate number of paragraphs per page
+        while (pageMatcher.find()) {
+            if (pageMatcher.start() > lastPos) {
+                String pageContent = text.substring(lastPos, pageMatcher.start()).trim();
+                if (!pageContent.isEmpty()) {
+                    pages.add(pageContent);
+                }
+            }
+            lastPos = pageMatcher.end();
+        }
         
-        for (int i = 0; i < paragraphs.length; i++) {
-            currentPage.append(paragraphs[i]).append("\n\n");
-            
-            if ((i + 1) % paragraphsPerPage == 0) {
-                pages.add(currentPage.toString());
-                currentPage = new StringBuilder();
+        if (lastPos < text.length()) {
+            String pageContent = text.substring(lastPos).trim();
+            if (!pageContent.isEmpty()) {
+                pages.add(pageContent);
             }
         }
         
-        if (currentPage.length() > 0) {
-            pages.add(currentPage.toString());
+        if (pages.isEmpty()) {
+            String[] paragraphs = text.split("\\n\\n+");
+            
+            int paragraphsPerPage = 15;
+            StringBuilder currentPage = new StringBuilder();
+            
+            for (int i = 0; i < paragraphs.length; i++) {
+                currentPage.append(paragraphs[i]).append("\n\n");
+                
+                if (paragraphs[i].matches("(?i)^\\s*(chapter|section)\\s+\\d+.*") || 
+                    ((i + 1) % paragraphsPerPage == 0)) {
+                    pages.add(currentPage.toString());
+                    currentPage = new StringBuilder();
+                }
+            }
+            
+            if (currentPage.length() > 0) {
+                pages.add(currentPage.toString());
+            }
         }
         
         return pages;
